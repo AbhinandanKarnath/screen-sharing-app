@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Meet-like Homepage</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f8f9fa;
+            color: #202124;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header {
+            background-color: #ffffff;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            padding: 10px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header .logo {
+            font-size: 1.5em;
+            font-weight: bold;
+            color: #1a73e8;
+        }
+
+        header nav {
+            display: flex;
+            gap: 15px;
+        }
+
+        header nav a {
+            text-decoration: none;
+            color: #5f6368;
+            font-size: 1em;
+        }
+
+        header nav a:hover {
+            color: #202124;
+        }
+
+        main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+
+        main h1 {
+            font-size: 2.5em;
+            margin-bottom: 20px;
+        }
+
+        main p {
+            font-size: 1.2em;
+            margin-bottom: 30px;
+            color: #5f6368;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 15px;
+        }
+
+        .buttons button {
+            padding: 10px 20px;
+            font-size: 1em;
+            color: #ffffff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .buttons .create-meeting {
+            background-color: #1a73e8;
+        }
+
+        .buttons .create-meeting:hover {
+            background-color: #135cbc;
+        }
+
+        .buttons .join-meeting {
+            background-color: #34a853;
+        }
+
+        .buttons .join-meeting:hover {
+            background-color: #2a7e42;
+        }
+
+        footer {
+            background-color: #ffffff;
+            text-align: center;
+            padding: 10px 0;
+            box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        footer p {
+            font-size: 0.9em;
+            color: #5f6368;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="logo">MeetClone</div>
+        <nav>
+            <a href="#">Features</a>
+            <a href="#">Pricing</a>
+            <a href="#">Help</a>
+        </nav>
+    </header>
+
+    <main>
+        <h1>Connect with the People Who Matter</h1>
+        <p>Start a new meeting or join an existing one instantly.</p>
+        <div class="buttons">
+            <button class="create-meeting">Create a Meeting</button>
+            <button class="join-meeting">Join a Meeting</button>
+        </div>
+    </main>
+
+    <footer>
+        <p>&copy; 2024 MeetClone. All rights reserved.</p>
+    </footer>
+</body>
+</html>
