@@ -1,10 +1,19 @@
 const express = require('express');
-const http = require('http');
+const https = require('https');
+const fs = require('fs');
 const { Server } = require('socket.io');
 const path = require('path');
 
 const app = express();
-const server = http.createServer(app);
+
+// Load SSL certificates
+const options = {
+    key: fs.readFileSync('ssl/key.pem'),  // Path to your private key
+    cert: fs.readFileSync('ssl/cert.pem') // Path to your certificate
+};
+
+// Create HTTPS server
+const server = https.createServer(options, app);
 const io = new Server(server);
 
 // Serve static files
@@ -82,7 +91,7 @@ io.on('connection', (socket) => {
     });
 });
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+const PORT = process.env.PORT || 443;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Secure server running at https://0.0.0.0:${PORT}/`);
 });

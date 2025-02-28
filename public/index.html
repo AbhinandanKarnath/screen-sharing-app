@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeetClone</title>
+    <title>SafeShare</title>
     <style>
         * {
             margin: 0;
@@ -197,11 +197,19 @@ nav .dropbtn:hover {
   background-color: #f1f1f1;
 }
 
+.logOut-btn
+{
+    border: none;
+    background-color: transparent;
+    font-size: 15px;
+    color:#5f6368;
+}
+
     </style>
 </head>
 <body>
     <header>
-        <a href="/" class="logo">MeetClone</a>
+        <a href="/" class="logo">Safe Share</a>
         <nav>
            <ul>
                 <li class="dropdown">
@@ -213,6 +221,7 @@ nav .dropbtn:hover {
                   </li>
                 </ul>              
             <a href="#help">Help</a>
+            <button class="logOut-btn" onclick="window.location.href='userAuth.html'">Log-out</button>
         </nav>
     </header>
 
@@ -230,7 +239,7 @@ nav .dropbtn:hover {
     </main>
 
     <footer>
-        <p>&copy; 2025 MeetClone. All rights reserved by 2447101 and 2447129.</p>
+        <p>&copy; 2025 Safe Share.</p>
     </footer>
 
     <script>
