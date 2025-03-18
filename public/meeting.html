@@ -26,25 +26,30 @@
             padding: 20px;
             gap: 20px;
             position: relative;
+            overflow: auto;
         }
 
         .video-grid {
-            flex: 1;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 20px;
             align-items: center;
             justify-items: center;
+            width: 100%;
+            height: 100vh; /* Ensures the grid takes full viewport height */
+            flex: 1;
+
         }
 
         .video-wrapper {
-            width: 100%;
-            height: 300px;
-            background-color: #3c4043;
-            border-radius: 8px;
-            overflow: hidden;
-            position: relative;
-        }
+        width: auto;
+        height: auto;
+        background-color: #3c4043;
+        border-radius: 0;
+        overflow: hidden;
+        position: relative;
+}
+
 
         video {
             width: 100%;
@@ -62,11 +67,12 @@
             gap: 16px;
             padding: 20px;
             background: rgba(32, 33, 36, 0.9);
+            z-index: 100;
         }
 
         .control-button {
-            width: 40px;
-            height: 40px;
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
             border: none;
             background-color: #3c4043;
@@ -76,6 +82,7 @@
             align-items: center;
             justify-content: center;
             transition: all 0.2s;
+            font-size: 20px;
         }
 
         .control-button:hover {
@@ -112,21 +119,37 @@
             padding: 8px 16px;
             border-radius: 4px;
             font-size: 14px;
+            z-index: 100;
+        }
+
+        .room-link {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(60, 64, 67, 0.9);
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 14px;
+            z-index: 100;
+            cursor: pointer;
+        }
+        
+        .room-link:hover {
+            background: rgba(80, 84, 87, 0.9);
         }
     </style>
 </head>
 <body>
     <div id="room-info"></div>
+    <div class="room-link" onclick="copyRoomLink()">Copy Meeting Link</div>
+    
     <div class="meeting-container">
         <div class="video-grid">
             <div class="video-wrapper">
                 <video id="localVideo" autoplay muted playsinline></video>
                 <div class="participant-name">You</div>
             </div>
-            <div class="video-wrapper">
-                <video id="remoteVideo" autoplay playsinline></video>
-                <div class="participant-name">Remote User</div>
-            </div>
+            <!-- Remote videos will be added here dynamically -->
         </div>
     </div>
 
@@ -145,6 +168,16 @@
         </button>
     </div>
 
+    <script>
+        function copyRoomLink() {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url).then(() => {
+                alert('Meeting link copied to clipboard!');
+            }).catch(err => {
+                console.error('Could not copy text: ', err);
+            });
+        }
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/js/all.min.js"></script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="js/client.js"></script>
