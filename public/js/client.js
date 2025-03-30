@@ -30,12 +30,16 @@ async function init() {
     
     try {
         localStream = await navigator.mediaDevices.getUserMedia({ 
-            video: true, 
+            video: {
+                width: { ideal: 1280 },
+                height: { ideal: 720 }
+            }, 
             audio: true 
         });
         // Display local video
         const localVideoElement = document.getElementById('localVideo');
         localVideoElement.srcObject = localStream;
+        localVideoElement.play().catch(e => console.error("Local video play error:", e));
     } catch (err) {
         console.error('Error accessing media devices:', err);
         alert('Cannot access camera or microphone. Please check permissions.');
@@ -83,9 +87,56 @@ async function init() {
     document.getElementById('endCall').onclick = endCall;
 }
 
+// Helper function to add a remote video element
+function addRemoteVideo(userId, stream) {
+    // Check if video element already exists
+    let videoElement = document.querySelector(`video[data-peer="${userId}"]`);
+    
+    if (!videoElement) {
+        // Create new video container
+        const videoGrid = document.querySelector('.video-grid');
+        const videoWrapper = document.createElement('div');
+        videoWrapper.className = 'video-wrapper';
+        videoWrapper.setAttribute('data-peer-wrapper', userId);
+        
+        videoElement = document.createElement('video');
+        videoElement.autoplay = true;
+        videoElement.playsInline = true;  // Corrected property name
+        videoElement.setAttribute('data-peer', userId);
+        
+        const nameTag = document.createElement('div');
+        nameTag.className = 'participant-name';
+        nameTag.textContent = `User ${userId.substring(0, 5)}`;
+        
+        // Add network quality indicator
+        const qualityIndicator = document.createElement('div');
+        qualityIndicator.className = 'network-quality';
+        qualityIndicator.textContent = 'Connecting...';
+        
+        videoWrapper.appendChild(videoElement);
+        videoWrapper.appendChild(nameTag);
+        videoWrapper.appendChild(qualityIndicator);
+        videoGrid.appendChild(videoWrapper);
+        
+        // Update layout after adding a new video
+        updateVideoLayout();
+    }
+    
+    // Set the stream as the source for this video element if it's different
+    if (videoElement.srcObject !== stream) {
+        videoElement.srcObject = stream;
+        videoElement.play().catch(e => console.error(`Remote video play error for ${userId}:`, e));
+    }
+    
+    return videoElement;
+}
+
 // Create a peer connection for a specific user
 async function createPeerConnection(targetUserId, createOffer = false) {
-    if (peers[targetUserId]) return;
+    if (peers[targetUserId]) {
+        console.log(`Peer connection to ${targetUserId} already exists`);
+        return peers[targetUserId];
+    }
 
     console.log('Creating peer connection for:', targetUserId);
     const peer = new RTCPeerConnection(configuration);
@@ -100,42 +151,17 @@ async function createPeerConnection(targetUserId, createOffer = false) {
     // Handle remote tracks
     peer.ontrack = (event) => {
         console.log('Received remote track from:', targetUserId, event.track.kind);
-        // Create or find a video element for this peer
-        let videoElement = document.querySelector(`video[data-peer="${targetUserId}"]`);
         
-        if (!videoElement) {
-            // Create new video container
-            const videoGrid = document.querySelector('.video-grid');
-            const videoWrapper = document.createElement('div');
-            videoWrapper.className = 'video-wrapper';
-            videoWrapper.setAttribute('data-peer-wrapper', targetUserId);
-            
-            videoElement = document.createElement('video');
-            videoElement.autoplay = true;
-            videoElement.playsinline = true;
-            videoElement.setAttribute('data-peer', targetUserId);
-            
-            const nameTag = document.createElement('div');
-            nameTag.className = 'participant-name';
-            nameTag.textContent = `User ${targetUserId.substring(0, 5)}`;
-            
-            videoWrapper.appendChild(videoElement);
-            videoWrapper.appendChild(nameTag);
-            videoGrid.appendChild(videoWrapper);
-            
-            // Update layout after adding a new video
-            updateVideoLayout();
-        }
-        
-        // Set the stream as the source for this video element
-        if (videoElement.srcObject !== event.streams[0]) {
-            videoElement.srcObject = event.streams[0];
+        // Use the first stream from the event
+        if (event.streams && event.streams[0]) {
+            addRemoteVideo(targetUserId, event.streams[0]);
         }
     };
 
     // Handle ICE candidates
     peer.onicecandidate = (event) => {
         if (event.candidate) {
+            console.log(`Sending ICE candidate to ${targetUserId}`);
             socket.emit('ice-candidate', {
                 targetUserId: targetUserId,
                 candidate: event.candidate
@@ -143,23 +169,50 @@ async function createPeerConnection(targetUserId, createOffer = false) {
         }
     };
 
-    // Connection state monitoring
-    peer.onconnectionstatechange = () => {
-        console.log(`Connection state with ${targetUserId}: ${peer.connectionState}`);
-        if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
-            // Try to reconnect
-            peer.restartIce();
+    // Ice connection state change monitoring
+    peer.oniceconnectionstatechange = () => {
+        console.log(`ICE connection state with ${targetUserId}: ${peer.iceConnectionState}`);
+        
+        // Update UI based on connection state
+        const qualityIndicator = document.querySelector(`[data-peer-wrapper="${targetUserId}"] .network-quality`);
+        if (qualityIndicator) {
+            if (peer.iceConnectionState === 'connected' || peer.iceConnectionState === 'completed') {
+                qualityIndicator.className = 'network-quality good';
+                qualityIndicator.textContent = 'Good Connection';
+            } else if (peer.iceConnectionState === 'checking') {
+                qualityIndicator.className = 'network-quality checking';
+                qualityIndicator.textContent = 'Connecting...';
+            } else if (peer.iceConnectionState === 'disconnected') {
+                qualityIndicator.className = 'network-quality poor';
+                qualityIndicator.textContent = 'Connection Issues';
+            } else if (peer.iceConnectionState === 'failed') {
+                qualityIndicator.className = 'network-quality failed';
+                qualityIndicator.textContent = 'Connection Failed';
+                
+                // Try to restart ICE
+                peer.restartIce();
+            }
         }
     };
 
-    peer.oniceconnectionstatechange = () => {
-        console.log(`ICE connection state with ${targetUserId}: ${peer.iceConnectionState}`);
+    // Connection state monitoring
+    peer.onconnectionstatechange = () => {
+        console.log(`Connection state with ${targetUserId}: ${peer.connectionState}`);
+        if (peer.connectionState === 'failed') {
+            console.log(`Connection with ${targetUserId} failed, attempting to reconnect`);
+            // Close and recreate the peer connection
+            handleUserDisconnected(targetUserId);
+            setTimeout(() => createPeerConnection(targetUserId, true), 2000);
+        }
     };
 
     // Create offer if we initiated the connection
     if (createOffer) {
         try {
-            const offer = await peer.createOffer();
+            const offer = await peer.createOffer({
+                offerToReceiveAudio: true,
+                offerToReceiveVideo: true
+            });
             await peer.setLocalDescription(offer);
             console.log(`Sending offer to ${targetUserId}`);
             socket.emit('offer', {
@@ -170,6 +223,8 @@ async function createPeerConnection(targetUserId, createOffer = false) {
             console.error('Error creating offer:', err);
         }
     }
+    
+    return peer;
 }
 
 // Update video layout based on number of participants
@@ -207,79 +262,11 @@ function updateVideoLayout() {
 // Handle received offer
 async function handleOffer(senderId, sdp) {
     try {
-        // Create peer connection if it doesn't exist
-        if (!peers[senderId]) {
-            console.log(`Creating peer connection for offer from ${senderId}`);
-            const peer = new RTCPeerConnection(configuration);
-            peers[senderId] = peer;
-
-            // Add local tracks
-            localStream.getTracks().forEach(track => {
-                console.log(`Adding ${track.kind} track to peer connection for ${senderId}`);
-                peer.addTrack(track, localStream);
-            });
-
-            // Handle remote tracks
-            peer.ontrack = (event) => {
-                console.log('Received remote track from:', senderId, event.track.kind);
-                // Create or find a video element for this peer
-                let videoElement = document.querySelector(`video[data-peer="${senderId}"]`);
-                
-                if (!videoElement) {
-                    // Create new video container
-                    const videoGrid = document.querySelector('.video-grid');
-                    const videoWrapper = document.createElement('div');
-                    videoWrapper.className = 'video-wrapper';
-                    videoWrapper.setAttribute('data-peer-wrapper', senderId);
-                    
-                    videoElement = document.createElement('video');
-                    videoElement.autoplay = true;
-                    videoElement.playsinline = true;
-                    videoElement.setAttribute('data-peer', senderId);
-                    
-                    const nameTag = document.createElement('div');
-                    nameTag.className = 'participant-name';
-                    nameTag.textContent = `User ${senderId.substring(0, 5)}`;
-                    
-                    videoWrapper.appendChild(videoElement);
-                    videoWrapper.appendChild(nameTag);
-                    videoGrid.appendChild(videoWrapper);
-                    
-                    // Update layout after adding a new video
-                    updateVideoLayout();
-                }
-                
-                // Set the stream as the source for this video element
-                if (videoElement.srcObject !== event.streams[0]) {
-                    videoElement.srcObject = event.streams[0];
-                }
-            };
-
-            // Handle ICE candidates
-            peer.onicecandidate = (event) => {
-                if (event.candidate) {
-                    socket.emit('ice-candidate', {
-                        targetUserId: senderId,
-                        candidate: event.candidate
-                    });
-                }
-            };
-
-            // Connection state monitoring
-            peer.onconnectionstatechange = () => {
-                console.log(`Connection state with ${senderId}: ${peer.connectionState}`);
-                if (peer.connectionState === 'failed' || peer.connectionState === 'disconnected') {
-                    // Try to reconnect
-                    peer.restartIce();
-                }
-            };
-            
-            peer.oniceconnectionstatechange = () => {
-                console.log(`ICE connection state with ${senderId}: ${peer.iceConnectionState}`);
-            };
+        // Get or create peer connection
+        let peer = peers[senderId];
+        if (!peer) {
+            peer = await createPeerConnection(senderId, false);
         }
-
-        const peer = peers[senderId];
         
         // Set remote description (the offer)
         console.log(`Setting remote description for offer from ${senderId}`);
@@ -321,12 +308,16 @@ async function handleIceCandidate(senderId, candidate) {
     const peer = peers[senderId];
     if (peer) {
         try {
-            if (peer.remoteDescription) {
-                console.log(`Adding ICE candidate from ${senderId}`);
-                await peer.addIceCandidate(new RTCIceCandidate(candidate));
-            } else {
-                console.warn(`Received ICE candidate from ${senderId} but remote description not set yet`);
+            // Save candidates if remote description is not set yet
+            if (!peer.remoteDescription) {
+                console.warn(`Received ICE candidate from ${senderId} but remote description not set yet, queueing`);
+                if (!peer._pendingCandidates) peer._pendingCandidates = [];
+                peer._pendingCandidates.push(candidate);
+                return;
             }
+            
+            console.log(`Adding ICE candidate from ${senderId}`);
+            await peer.addIceCandidate(new RTCIceCandidate(candidate));
         } catch (err) {
             console.error('Error handling ICE candidate:', err);
         }
@@ -459,7 +450,7 @@ window.addEventListener('load', function() {
     init();
     
     // Copy room link functionality
-    document.getElementById('copyLink').addEventListener('click', function() {
+    document.getElementById('copyLink')?.addEventListener('click', function() {
         const roomLink = window.location.href;
         navigator.clipboard.writeText(roomLink).then(() => {
             alert('Room link copied to clipboard!');
@@ -577,6 +568,8 @@ window.addEventListener('load', function() {
 // Append a chat message to the chat panel
 function appendChatMessage(sender, message) {
     const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    
     const messageElement = document.createElement('div');
     messageElement.className = 'chat-message';
     
@@ -598,6 +591,11 @@ function appendChatMessage(sender, message) {
 
 // Switch audio/video device
 async function switchDevice() {
+    const audioSelect = document.getElementById('audioSource');
+    const videoSelect = document.getElementById('videoSource');
+    
+    if (!audioSelect || !videoSelect) return;
+    
     const audioSource = (audioSelect.value) ? {deviceId: {exact: audioSelect.value}} : true;
     const videoSource = (videoSelect.value) ? {deviceId: {exact: videoSelect.value}} : true;
     
@@ -639,27 +637,46 @@ function checkNetworkQuality() {
     Object.entries(peers).forEach(([userId, peer]) => {
         if (peer.connectionState === 'connected') {
             peer.getStats().then(stats => {
+                let packetLossRate = 0;
+                let jitter = 0;
+                let hasVideoStat = false;
+                
                 stats.forEach(report => {
                     if (report.type === 'inbound-rtp' && report.kind === 'video') {
-                        const packetLoss = report.packetsLost / report.packetsReceived;
-                        const jitter = report.jitter;
-                        
-                        // Update UI with network quality info
-                        const qualityIndicator = document.querySelector(`[data-peer-wrapper="${userId}"] .network-quality`);
-                        if (qualityIndicator) {
-                            if (packetLoss > 0.1 || jitter > 50) {
-                                qualityIndicator.className = 'network-quality poor';
-                                qualityIndicator.textContent = 'Poor Connection';
-                            } else if (packetLoss > 0.05 || jitter > 30) {
-                                qualityIndicator.className = 'network-quality fair';
-                                qualityIndicator.textContent = 'Fair Connection';
-                            } else {
-                                qualityIndicator.className = 'network-quality good';
-                                qualityIndicator.textContent = 'Good Connection';
-                            }
+                        hasVideoStat = true;
+                        if (report.packetsReceived > 0) {
+                            packetLossRate = report.packetsLost / (report.packetsReceived + report.packetsLost);
                         }
+                        jitter = report.jitter;
+                        
+                        // Debug log
+                        console.log(`Connection stats for ${userId}:`, {
+                            packetsReceived: report.packetsReceived,
+                            packetsLost: report.packetsLost,
+                            jitter: jitter,
+                            frameWidth: report.frameWidth,
+                            frameHeight: report.frameHeight,
+                            framesPerSecond: report.framesPerSecond
+                        });
                     }
                 });
+                
+                // Update UI with network quality info if we have video stats
+                if (hasVideoStat) {
+                    const qualityIndicator = document.querySelector(`[data-peer-wrapper="${userId}"] .network-quality`);
+                    if (qualityIndicator) {
+                        if (packetLossRate > 0.1 || jitter > 50) {
+                            qualityIndicator.className = 'network-quality poor';
+                            qualityIndicator.textContent = 'Poor Connection';
+                        } else if (packetLossRate > 0.05 || jitter > 30) {
+                            qualityIndicator.className = 'network-quality fair';
+                            qualityIndicator.textContent = 'Fair Connection';
+                        } else {
+                            qualityIndicator.className = 'network-quality good';
+                            qualityIndicator.textContent = 'Good Connection';
+                        }
+                    }
+                }
             }).catch(err => {
                 console.error('Error getting stats:', err);
             });
@@ -667,109 +684,113 @@ function checkNetworkQuality() {
     });
 }
 
-// Add a feature to record the meeting
+// Add recording feature
 let mediaRecorder;
 let recordedChunks = [];
 
 function toggleRecording() {
     const recordButton = document.getElementById('recordMeeting');
+    if (!recordButton) return;
     
     if (!mediaRecorder) {
         // Start recording
-        
-        // Create a stream that includes all participant videos
-        const videoElements = document.querySelectorAll('video');
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        
-        // Set canvas size
-        canvas.width = 1280;
-        canvas.height = 720;
-        
-        // Create a stream from the canvas
-        const canvasStream = canvas.captureStream(30);
-        
-        // Add audio track from local stream
-        const audioTrack = localStream.getAudioTracks()[0];
-        if (audioTrack) {
-            canvasStream.addTrack(audioTrack);
-        }
-        
-        // Start recording
-        mediaRecorder = new MediaRecorder(canvasStream, {
-            mimeType: 'video/webm;codecs=vp9'
-        });
-        
-        mediaRecorder.ondataavailable = function(event) {
-            if (event.data.size > 0) {
-                recordedChunks.push(event.data);
-            }
-        };
-        
-        mediaRecorder.onstop = function() {
-            // Create a blob from the recorded chunks
-            const blob = new Blob(recordedChunks, {
-                type: 'video/webm'
-            });
+        try {
+            // Create a stream that includes all participant videos
+            const videoElements = document.querySelectorAll('video');
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
             
-            // Create a download link
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.style.display = 'none';
-            a.href = url;
-            a.download = `meeting-${roomId}-${new Date().toISOString()}.webm`;
-            document.body.appendChild(a);
-            a.click();
+            // Set canvas size
+            canvas.width = 1280;
+            canvas.height = 720;
             
-            // Clean up
-            setTimeout(() => {
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-            }, 100);
+            // Create a stream from the canvas
+            const canvasStream = canvas.captureStream(30);
             
-            recordedChunks = [];
-            mediaRecorder = null;
-            recordButton.textContent = 'Start Recording';
-            recordButton.classList.remove('active');
-        };
-        
-        // Start recording and canvas rendering
-        mediaRecorder.start(1000);
-        recordButton.textContent = 'Stop Recording';
-        recordButton.classList.add('active');
-        
-        // Draw all videos on canvas
-        function drawVideosOnCanvas() {
-            if (!mediaRecorder) return;
-            
-            ctx.fillStyle = '#000';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            const videoCount = videoElements.length;
-            let cols, rows;
-            
-            if (videoCount <= 1) {
-                cols = 1; rows = 1;
-            } else if (videoCount <= 4) {
-                cols = 2; rows = 2;
-            } else {
-                cols = 3; rows = Math.ceil(videoCount / 3);
+            // Add audio track from local stream
+            const audioTrack = localStream.getAudioTracks()[0];
+            if (audioTrack) {
+                canvasStream.addTrack(audioTrack);
             }
             
-            const width = canvas.width / cols;
-            const height = canvas.height / rows;
-            
-            videoElements.forEach((video, index) => {
-                const x = (index % cols) * width;
-                const y = Math.floor(index / cols) * height;
-                ctx.drawImage(video, x, y, width, height);
+            // Start recording
+            mediaRecorder = new MediaRecorder(canvasStream, {
+                mimeType: 'video/webm;codecs=vp9'
             });
             
-            requestAnimationFrame(drawVideosOnCanvas);
+            mediaRecorder.ondataavailable = function(event) {
+                if (event.data.size > 0) {
+                    recordedChunks.push(event.data);
+                }
+            };
+            
+            mediaRecorder.onstop = function() {
+                // Create a blob from the recorded chunks
+                const blob = new Blob(recordedChunks, {
+                    type: 'video/webm'
+                });
+                
+                // Create a download link
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = `meeting-${roomId}-${new Date().toISOString()}.webm`;
+                document.body.appendChild(a);
+                a.click();
+                
+                // Clean up
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                }, 100);
+                
+                recordedChunks = [];
+                mediaRecorder = null;
+                recordButton.textContent = 'Start Recording';
+                recordButton.classList.remove('active');
+            };
+            
+            // Start recording and canvas rendering
+            mediaRecorder.start(1000);
+            recordButton.textContent = 'Stop Recording';
+            recordButton.classList.add('active');
+            
+            // Draw all videos on canvas
+            function drawVideosOnCanvas() {
+                if (!mediaRecorder) return;
+                
+                ctx.fillStyle = '#000';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const videoCount = videoElements.length;
+                let cols, rows;
+                
+                if (videoCount <= 1) {
+                    cols = 1; rows = 1;
+                } else if (videoCount <= 4) {
+                    cols = 2; rows = 2;
+                } else {
+                    cols = 3; rows = Math.ceil(videoCount / 3);
+                }
+                
+                const width = canvas.width / cols;
+                const height = canvas.height / rows;
+                
+                videoElements.forEach((video, index) => {
+                    const x = (index % cols) * width;
+                    const y = Math.floor(index / cols) * height;
+                    ctx.drawImage(video, x, y, width, height);
+                });
+                
+                requestAnimationFrame(drawVideosOnCanvas);
+            }
+            
+            drawVideosOnCanvas();
+        } catch (err) {
+            console.error('Error starting recording:', err);
+            alert('Failed to start recording. Please try again.');
         }
-        
-        drawVideosOnCanvas();
-        
     } else {
         // Stop recording
         mediaRecorder.stop();
