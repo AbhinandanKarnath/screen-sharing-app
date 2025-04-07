@@ -295,7 +295,7 @@ app.get('/auth', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'auth.html'));
 });
 
-const PORT = process.env.PORT || 443;
+const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Secure server running at https://0.0.0.0:${PORT}/`);
 });
