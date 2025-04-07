@@ -221,7 +221,10 @@ nav .dropbtn:hover {
                   </li>
                 </ul>              
             <a href="#help">Help</a>
-            <button class="logOut-btn" onclick="window.location.href='userAuth.html'">Log-out</button>
+            <div class="user-profile">
+                <span id="username-display">Loading...</span>
+                <button class="logOut-btn" onclick="handleLogout()">Logout</button>
+            </div>
         </nav>
     </header>
 
@@ -243,6 +246,26 @@ nav .dropbtn:hover {
     </footer>
 
     <script>
+        // Function to get username from local storage
+        function displayUsername() {
+            const username = localStorage.getItem('username');
+            if (username) {
+                document.getElementById('username-display').textContent = username;
+            } else {
+                window.location.href = '/auth';
+            }
+        }
+
+        // Function to handle logout
+        function handleLogout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('username');
+            window.location.href = '/auth';
+        }
+
+        // Display username when page loads
+        document.addEventListener('DOMContentLoaded', displayUsername);
+
         function joinMeeting() {
             const meetingCode = prompt('Enter meeting code:');
             if (meetingCode) {
